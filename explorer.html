@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Explorer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --bg: #1e1e1e; --sidebar: #252526; --accent: #007acc; --text: #ccc; --border: #333; }
+        body { margin: 0; display: flex; height: 100vh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar { width: 280px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .sidebar-header { padding: 10px; font-weight: bold; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .file-tree { flex: 1; overflow-y: auto; padding: 5px 0; }
+        
+        /* Tree Items */
+        .tree-item { cursor: pointer; font-size: 13px; display: flex; align-items: center; padding: 3px 10px; color: #aaa; white-space: nowrap; user-select: none; }
+        .tree-item:hover { background: #2a2d2e; color: white; }
+        .tree-item.active { background: #37373d; color: white; border-left: 2px solid var(--accent); }
+        
+        .tree-item i { margin-right: 6px; width: 16px; text-align: center; }
+        .folder-content { display: none; margin-left: 12px; border-left: 1px solid #333; }
+        .folder-content.open { display: block; }
+
+        /* Main Area */
+        .main-area { flex: 1; display: flex; flex-direction: column; }
+        .toolbar { height: 40px; background: #2d2d2d; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; justify-content: space-between; }
+        .file-path { font-family: monospace; color: #fff; font-size: 13px; }
+        
+        .btn { background: #333; color: #ccc; border: none; padding: 6px 12px; cursor: pointer; font-size: 12px; border-radius: 2px; }
+        .btn:hover { background: #444; color: white; }
+        .btn-primary { background: var(--accent); color: white; }
+        
+        #monaco-editor { flex: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <span>PROJECT EXPLORER</span>
+            <button class="btn" onclick="loadTree()"><i class="fas fa-sync"></i></button>
+        </div>
+        <div class="file-tree" id="fileTree"></div>
+    </div>
+
+    <div class="main-area">
+        <div class="toolbar">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <a href="/" style="color:#aaa; text-decoration:none;"><i class="fas fa-arrow-left"></i> IDE</a>
+                <span class="file-path" id="currentFileName">No file selected</span>
+            </div>
+            <button class="btn btn-primary" onclick="saveCurrentFile()"><i class="fas fa-save"></i> Save (Ctrl+S)</button>
+        </div>
+        <div id="monaco-editor"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        let editor;
+        let currentFilePath = null;
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+                value: '// Select a file to edit', language: 'cpp', theme: 'vs-dark', automaticLayout: true
+            });
+            loadTree();
+        });
+
+        // 1. LOAD CẤU TRÚC CÂY
+        async function loadTree() {
+            const container = document.getElementById('fileTree');
+            container.innerHTML = '<div style="padding:10px">Loading...</div>';
+            try {
+                const res = await fetch('/api/local/files');
+                const data = await res.json();
+                container.innerHTML = '';
+                if(data.tree) renderTree(data.tree, container);
+            } catch(e) {
+                container.innerHTML = 'Error loading files';
+            }
+        }
+
+        // 2. RENDER ĐỆ QUY
+        function renderTree(items, container) {
+            items.forEach(item => {
+                const wrapper = document.createElement('div');
+                
+                const row = document.createElement('div');
+                row.className = 'tree-item';
+                
+                // Icon logic
+                let icon = 'fa-file';
+                let color = '#aaa';
+                if(item.type === 'folder') { icon = 'fa-folder'; color = '#dcb67a'; }
+                else if(item.name.endsWith('.cpp')) { icon = 'fa-file-code'; color = '#007acc'; }
+                else if(item.name.endsWith('.py')) { icon = 'fa-python'; color = '#ffe873'; }
+                
+                row.innerHTML = `<i class="fas ${icon}" style="color:${color}"></i> ${item.name}`;
+                
+                // Click event
+                row.onclick = (e) => {
+                    // Xử lý click Folder
+                    if(item.type === 'folder') {
+                        const contentDiv = wrapper.querySelector('.folder-content');
+                        const iconI = row.querySelector('i');
+                        
+                        if(contentDiv.classList.contains('open')) {
+                            contentDiv.classList.remove('open');
+                            iconI.className = 'fas fa-folder';
+                        } else {
+                            contentDiv.classList.add('open');
+                            iconI.className = 'fas fa-folder-open';
+                        }
+                    } 
+                    // Xử lý click File
+                    else {
+                        document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+                        row.classList.add('active');
+                        openFile(item.path);
+                    }
+                };
+
+                wrapper.appendChild(row);
+
+                // Render children nếu là folder
+                if (item.type === 'folder' && item.children) {
+                    const childContainer = document.createElement('div');
+                    childContainer.className = 'folder-content';
+                    renderTree(item.children, childContainer);
+                    wrapper.appendChild(childContainer);
+                }
+
+                container.appendChild(wrapper);
+            });
+        }
+
+        // 3. MỞ FILE
+        async function openFile(path) {
+            currentFilePath = path;
+            document.getElementById('currentFileName').innerText = path;
+            editor.setValue("// Loading...");
+
+            try {
+                // Gửi request với param filepath thay vì filename
+                const res = await fetch(`/api/local/read?filepath=${encodeURIComponent(path)}`);
+                const data = await res.json();
+                editor.setValue(data.content);
+
+                // Detect language
+                let model = editor.getModel();
+                if (path.endsWith('.py')) monaco.editor.setModelLanguage(model, 'python');
+                else if (path.endsWith('.html')) monaco.editor.setModelLanguage(model, 'html');
+                else monaco.editor.setModelLanguage(model, 'cpp');
+
+            } catch (e) { editor.setValue("// Error reading file"); }
+        }
+
+        // 4. LƯU FILE
+        async function saveCurrentFile() {
+            if (!currentFilePath) return;
+            try {
+                const res = await fetch('/api/local/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: currentFilePath, content: editor.getValue() })
+                });
+                const data = await res.json();
+                if(data.status === 'success') alert("Saved!");
+                else alert("Error: " + data.message);
+            } catch (e) { alert("Connection error"); }
+        }
+        
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault(); saveCurrentFile();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-main: #1e1e1e;
+            --bg-panel: #1e1e1e;
+            --border: #333333;
+            --accent: #007acc;
+            --text: #cccccc;
+            --btn-hover: #2a2d2e;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: var(--bg-main); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        
+        /* --- EDITOR AREA --- */
+        .editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        
+        .editor-toolbar { 
+            height: 35px; background: #2d2d2d; border-bottom: 1px solid var(--border); 
+            display: flex; align-items: center; padding: 0 10px; justify-content: space-between; 
+        }
+        
+        .tab-name { font-size: 13px; color: #fff; background: #1e1e1e; padding: 8px 15px; border-top: 2px solid var(--accent); }
+        
+        .tools { display: flex; gap: 5px; }
+        .tools button { 
+            background: none; border: none; color: #aaa; cursor: pointer; 
+            font-size: 12px; padding: 5px 10px; border-radius: 3px; display: flex; align-items: center; gap: 6px;
+        }
+        .tools button:hover { background-color: var(--btn-hover); color: white; }
+        
+        /* Nút Explorer đặc biệt */
+        .btn-explorer { color: #4caf50 !important; font-weight: bold; }
+        /* Nút Debug đặc biệt */
+        .btn-debug { color: #ff9800 !important; }
+
+        #monaco-container { width: 100%; height: 100%; }
+        
+        /* --- TERMINAL PANEL --- */
+        .terminal-panel {
+            height: 220px; min-height: 100px; max-height: 80vh;
+            background-color: var(--bg-panel); border-top: 1px solid var(--border);
+            display: flex; flex-direction: column; resize: vertical; overflow: hidden; z-index: 20;
+        }
+        .terminal-header { padding: 5px 15px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #888; display: flex; gap: 20px; border-bottom: 1px solid #2b2b2b; cursor: row-resize; }
+        .terminal-tab { color: white; border-bottom: 1px solid white; padding-bottom: 2px; }
+        .terminal-body { flex: 1; display: flex; padding: 10px; gap: 15px; overflow: hidden; }
+
+        textarea#userInput {
+            flex: 1; background: #1e1e1e; color: #d4d4d4; border: 1px solid #333;
+            padding: 10px; font-family: 'Consolas', monospace; font-size: 13px;
+            resize: none; outline: none;
+        }
+        textarea#userInput:focus { border-color: #007acc; }
+
+        .controls-right { width: 160px; display: flex; flex-direction: column; gap: 8px; }
+
+        .btn-run {
+            background: #4caf50; color: white; border: none; padding: 8px; border-radius: 2px;
+            cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 12px;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .btn-run:hover { background: #43a047; }
+        .btn-run:disabled { background: #333; color: #888; cursor: not-allowed; }
+
+        .btn-attach {
+            background: #333; color: #ccc; border: 1px solid #444; padding: 6px;
+            border-radius: 2px; cursor: pointer; font-size: 11px; text-align: center;
+        }
+        .btn-attach:hover { background: #444; color: white; }
+
+        /* --- DANH SÁCH FILE --- */
+        .file-list {
+            flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+        }
+        .file-badge {
+            background: #252526; border: 1px solid #444; padding: 4px 8px;
+            font-size: 11px; display: flex; align-items: center; justify-content: space-between;
+            color: #eee; border-radius: 3px;
+        }
+        .file-badge i { margin-right: 5px; color: var(--accent); }
+        .file-badge .remove-file {
+            cursor: pointer; color: #f44336; margin-left: 8px; font-weight: bold;
+        }
+
+        .brand-text { margin-top: auto; text-align: right; font-size: 10px; color: #555; font-weight: bold; }
+        #loader { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(30,30,30, 0.8); display: none; justify-content: center; align-items: center; color: var(--accent); font-size: 18px; z-index: 50; }
+    </style>
+</head>
+<body>
+
+    <main class="editor-area">
+        <div class="editor-toolbar">
+            <div class="tab-name">hoathang.cpp</div>
+            <div class="tools">
+                <!-- NÚT EXPLORER (MỚI) -->
+                <a href="/explorer" target="_blank" style="text-decoration: none;">
+                    <button class="btn-explorer"><i class="fas fa-folder-open"></i> Explorer</button>
+                </a>
+
+                <!-- NÚT FAST DEBUG (MỚI) -->
+                <button class="btn-debug" onclick="fastDebug()"><i class="fas fa-bug"></i> Debug</button>
+
+                <div style="width: 1px; height: 15px; background: #444; margin: 0 5px;"></div>
+
+                <button onclick="formatCode()"><i class="fas fa-align-left"></i> Format</button>
+                <button id="btnCopy" onclick="copyCode()"><i class="fas fa-copy"></i> Copy</button>
+            </div>
+        </div>
+        <div id="monaco-container"></div>
+        <div id="loader"><i class="fas fa-circle-notch fa-spin"></i> &nbsp; Running.</div>
+    </main>
+
+    <footer class="terminal-panel">
+        <div class="terminal-header">
+            <span class="terminal-tab">INPUT / PROMPT</span>
+            <span>OUTPUT</span>
+        </div>
+        
+        <div class="terminal-body">
+            <!-- Ô nhập liệu -->
+            <textarea id="userInput" placeholder="input"></textarea>
+            
+            <!-- Cột điều khiển -->
+            <div class="controls-right">
+                <button class="btn-run" onclick="runSolver()" id="btnRun">
+                    <i class="fas fa-play"></i> Run (F9)
+                </button>
+
+                <!-- Nút chọn file ẩn -->
+                <input type="file" id="hiddenFileInput" multiple style="display: none;">
+                
+                <button class="btn-attach" onclick="document.getElementById('hiddenFileInput').click()">
+                    <i class="fas fa-paperclip"></i> Attach Files
+                </button>
+
+                <!-- Khu vực hiển thị danh sách file -->
+                <div class="file-list" id="fileListContainer"></div>
+
+                <div class="brand-text">HOATHANG</div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        let editor;
+        let chatHistory = [];
+        let attachments = []; 
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('monaco-container'), {
+                value: '// hoaquangthang',
+                language: 'cpp',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                fontSize: 14,
+                fontFamily: 'Consolas, monospace',
+                minimap: { enabled: true }
+            });
+        });
+
+        // --- FILE HANDLING ---
+        document.getElementById('hiddenFileInput').addEventListener('change', function(e) {
+            handleFiles(this.files);
+            this.value = ''; 
+        });
+
+        document.getElementById('userInput').addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const files = [];
+            for (let item of items) {
+                if (item.kind === 'file') {
+                    files.push(item.getAsFile());
+                }
+            }
+            if (files.length > 0) handleFiles(files);
+        });
+
+        function handleFiles(fileList) {
+            for (let file of fileList) {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const base64String = evt.target.result.split(',')[1]; 
+                    const mimeType = file.type || "application/octet-stream";
+                    
+                    attachments.push({
+                        name: file.name,
+                        mimeType: mimeType,
+                        data: base64String
+                    });
+                    renderFileList();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function renderFileList() {
+            const container = document.getElementById('fileListContainer');
+            container.innerHTML = '';
+            
+            attachments.forEach((file, index) => {
+                const badge = document.createElement('div');
+                badge.className = 'file-badge';
+                let iconClass = 'fa-file';
+                if (file.mimeType.includes('image')) iconClass = 'fa-image';
+                else if (file.mimeType.includes('pdf')) iconClass = 'fa-file-pdf';
+                
+                badge.innerHTML = `
+                    <span><i class="fas ${iconClass}"></i> ${truncateString(file.name, 12)}</span>
+                    <span class="remove-file" onclick="removeFile(${index})">×</span>
+                `;
+                container.appendChild(badge);
+            });
+        }
+
+        function removeFile(index) { attachments.splice(index, 1); renderFileList(); }
+        function truncateString(str, num) { return str.length > num ? str.slice(0, num) + "..." : str; }
+
+        // --- RUN LOGIC ---
+        async function runSolver() {
+            const inputEl = document.getElementById('userInput');
+            let text = inputEl.value.trim();
+            const btn = document.getElementById('btnRun');
+            const loader = document.getElementById('loader');
+
+            if (!text && attachments.length === 0) return;
+
+            inputEl.value = ''; 
+            loader.style.display = 'flex';
+            btn.disabled = true;
+            btn.innerText = "Running...";
+            
+            // Hiển thị comment đang chạy
+            const currentCode = editor.getValue();
+            if(currentCode.trim() === '' || currentCode.startsWith('//')) {
+                editor.setValue("// run");
+            }
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        history: chatHistory,
+                        message: text,
+                        files: attachments
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    editor.setValue("/* ERROR: " + data.error + " */\n\n" + currentCode);
+                } else {
+                    chatHistory.push({ role: "user", parts: [{ text: text + (attachments.length ? ` [Attached ${attachments.length} files]` : "") }] });
+                    chatHistory.push({ role: "model", parts: [{ text: data.result }] });
+
+                    attachments = [];
+                    renderFileList();
+
+                    const code = extractCodeOnly(data.result);
+                    editor.setValue(code);
+                    // Trigger format sau khi set value
+                    setTimeout(() => editor.trigger('', 'editor.action.formatDocument'), 300);
+                }
+            } catch (err) {
+                editor.setValue("// CONNECTION ERROR\n" + err.message);
+            } finally {
+                loader.style.display = 'none';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Run (F9)';
+            }
+        }
+
+        // --- FAST DEBUG FUNCTION (MỚI) ---
+        function fastDebug() {
+            const code = editor.getValue();
+            if (!code.trim()) {
+                alert("Editor is empty!");
+                return;
+            }
+
+            const debugPrompt = `
+[DEBUG & OPTIMIZE REQUEST]
+Code hiện tại:
+${code}
+
+bỏ //, tên biến ngắn
+            `;
+
+            // Đặt vào ô input và tự động chạy
+            document.getElementById('userInput').value = debugPrompt;
+            runSolver();
+        }
+
+        function extractCodeOnly(fullText) {
+            const regex = /```(\w+)?\n([\s\S]*?)```/;
+            const match = fullText.match(regex);
+            return (match && match[2]) ? match[2].trim() : fullText;
+        }
+
+        function formatCode() { editor.trigger('', 'editor.action.formatDocument'); }
+        
+        function copyCode() {
+            navigator.clipboard.writeText(editor.getValue()).then(() => {
+                const btn = document.getElementById('btnCopy');
+                const original = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Done';
+                btn.style.color = '#4caf50';
+                setTimeout(() => {
+                    btn.innerHTML = original;
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'F9') {
+                event.preventDefault();
+                if (!document.getElementById('btnRun').disabled) runSolver();
+            }
+        });
+    </script>
+</body>
+</html>
